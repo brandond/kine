@@ -125,6 +125,10 @@ outer:
 		// leave the last 1000
 		end = end - 1000
 
+		logrus.Debugf("COMPACT cursor=%d end=%d currentRev=%d", cursor, end, currentRev)
+		deletedRows := 0
+		start := time.Now()
+		startCursor := cursor
 		savedCursor := cursor
 		// Purposefully start at the current and redo the current as
 		// it could have failed before actually compacting
@@ -167,6 +171,7 @@ outer:
 					logrus.Errorf("failed to delete revision %d: %v", event.PrevKV.ModRevision, err)
 					continue outer
 				}
+				deletedRows++
 			}
 
 			if event.Delete {
@@ -182,6 +187,7 @@ outer:
 					logrus.Errorf("failed to delete current revision %d: %v", cursor, err)
 					continue outer
 				}
+				deletedRows++
 			}
 		}
 
@@ -191,6 +197,8 @@ outer:
 				continue outer
 			}
 		}
+
+		logrus.Infof("COMPACT deleted %d rows from %d revisions in %s - compacted to %d/%d", deletedRows, (cursor - startCursor), time.Since(start), cursor, currentRev)
 	}
 }
 
