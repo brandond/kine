@@ -267,7 +267,7 @@ func (l *LogStructured) ttlEvents(ctx context.Context) chan *server.Event {
 		rev, events, err := l.log.List(ctx, "/", "", 1000, 0, false)
 		for len(events) > 0 {
 			if err != nil {
-				logrus.Errorf("failed to read old events for ttl")
+				logrus.Errorf("Failed to read old events for ttl: %v", err)
 				return
 			}
 
@@ -307,7 +307,7 @@ func (l *LogStructured) ttl(ctx context.Context) {
 			}
 			mutex.Lock()
 			if _, _, _, err := l.Delete(ctx, event.KV.Key, event.KV.ModRevision); err != nil {
-				logrus.Errorf("failed to delete expired key: %v", err)
+				logrus.Errorf("Failed to delete expired key: %v", err)
 			}
 			mutex.Unlock()
 		}(event)
@@ -330,7 +330,7 @@ func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64
 
 	rev, kvs, err := l.log.After(ctx, prefix, revision, 0)
 	if err != nil {
-		logrus.Errorf("failed to list %s for revision %d", prefix, revision)
+		logrus.Errorf("Failed to list %s for revision %d: %v", prefix, revision, err)
 		cancel()
 	}
 

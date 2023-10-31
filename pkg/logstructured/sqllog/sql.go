@@ -247,8 +247,21 @@ func (s *SQLLog) After(ctx context.Context, prefix string, revision, limit int64
 	}
 
 	rev, compact, result, err := RowsToEvents(rows)
+
+	if revision > 0 && len(result) == 0 {
+		// a zero length result won't have the compact or current revisions so get them manually
+		rev, err = s.d.CurrentRevision(ctx)
+		if err != nil {
+			return 0, nil, err
+		}
+		compact, err = s.d.GetCompactRevision(ctx)
+		if err != nil {
+			return 0, nil, err
+		}
+	}
+
 	if revision > 0 && revision < compact {
-		return rev, result, server.ErrCompacted
+		return rev, nil, server.ErrCompacted
 	}
 
 	return rev, result, err
@@ -299,11 +312,11 @@ func (s *SQLLog) List(ctx context.Context, prefix, startKey string, limit, revis
 	}
 
 	if revision > rev {
-		return rev, result, server.ErrFutureRev
+		return rev, nil, server.ErrFutureRev
 	}
 
 	if revision > 0 && revision < compact {
-		return rev, result, server.ErrCompacted
+		return rev, nil, server.ErrCompacted
 	}
 
 	select {
