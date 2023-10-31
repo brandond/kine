@@ -96,7 +96,14 @@ func main() {
 			Usage:       "Enable net/http/pprof handlers on the metrics bind address. Default is false.",
 			Destination: &metricsConfig.EnableProfiling,
 		},
-		cli.BoolFlag{Name: "debug"},
+		cli.BoolFlag{
+			Name:  "debug",
+			Usage: "Enables trace-level logging; equivalent to --log-level=trace",
+		},
+		cli.StringFlag{
+			Name:  "log-level",
+			Usage: "Set the log level to a specific value",
+		},
 	}
 	app.Action = run
 
@@ -114,6 +121,12 @@ func run(c *cli.Context) error {
 	})
 	if c.Bool("debug") {
 		logrus.SetLevel(logrus.TraceLevel)
+	} else if logLevel := c.String("log-level"); logLevel != "" {
+		level, err := logrus.ParseLevel(logLevel)
+		if err != nil {
+			return err
+		}
+		logrus.SetLevel(level)
 	}
 	ctx := signals.SetupSignalContext()
 
