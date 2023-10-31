@@ -11,6 +11,7 @@ import (
 
 type Log interface {
 	Start(ctx context.Context) error
+	CompactRevision(ctx context.Context) (int64, error)
 	CurrentRevision(ctx context.Context) (int64, error)
 	List(ctx context.Context, prefix, startKey string, limit, revision int64, includeDeletes bool) (int64, []*server.Event, error)
 	After(ctx context.Context, prefix string, revision, limit int64) (int64, []*server.Event, error)
@@ -314,7 +315,7 @@ func (l *LogStructured) ttl(ctx context.Context) {
 	}
 }
 
-func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64) <-chan []*server.Event {
+func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64) server.WatchResult {
 	logrus.Tracef("WATCH %s, revision=%d", prefix, revision)
 
 	// starting watching right away so we don't miss anything
@@ -327,10 +328,16 @@ func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64
 	}
 
 	result := make(chan []*server.Event, 100)
+	wr := server.WatchResult{Events: result}
 
 	rev, kvs, err := l.log.After(ctx, prefix, revision, 0)
 	if err != nil {
 		logrus.Errorf("Failed to list %s for revision %d: %v", prefix, revision, err)
+		if err == server.ErrCompacted {
+			compact, _ := l.log.CompactRevision(ctx)
+			wr.CompactRevision = compact
+			wr.CurrentRevision = rev
+		}
 		cancel()
 	}
 
@@ -354,7 +361,7 @@ func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64
 		cancel()
 	}()
 
-	return result
+	return wr
 }
 
 func filter(events []*server.Event, rev int64) []*server.Event {

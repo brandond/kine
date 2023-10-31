@@ -21,6 +21,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/server/v3/embed"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/channelz/service"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 )
@@ -44,6 +45,7 @@ type Config struct {
 	ServerTLSConfig      tls.Config
 	BackendTLSConfig     tls.Config
 	MetricsRegisterer    prometheus.Registerer
+	EnableChannelz       bool
 }
 
 type ETCDConfig struct {
@@ -86,6 +88,10 @@ func Listen(ctx context.Context, config Config) (ETCDConfig, error) {
 		return ETCDConfig{}, errors.Wrap(err, "creating GRPC server")
 	}
 	b.Register(grpcServer)
+
+	if config.EnableChannelz {
+		service.RegisterChannelzServiceToServer(grpcServer)
+	}
 
 	// Create raw listener and wrap in cmux for protocol switching
 	listener, err := createListener(config)

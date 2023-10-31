@@ -97,6 +97,11 @@ func main() {
 			Destination: &metricsConfig.EnableProfiling,
 		},
 		cli.BoolFlag{
+			Name:        "enable-channelz",
+			Usage:       "Enable the GRPC Channelz service. Default is false.",
+			Destination: &config.EnableChannelz,
+		},
+		cli.BoolFlag{
 			Name:  "debug",
 			Usage: "Enables trace-level logging; equivalent to --log-level=trace",
 		},

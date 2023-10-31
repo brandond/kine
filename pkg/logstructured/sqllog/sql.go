@@ -236,6 +236,10 @@ func (s *SQLLog) CurrentRevision(ctx context.Context) (int64, error) {
 	return s.d.CurrentRevision(ctx)
 }
 
+func (s *SQLLog) CompactRevision(ctx context.Context) (int64, error) {
+	return s.d.GetCompactRevision(ctx)
+}
+
 func (s *SQLLog) After(ctx context.Context, prefix string, revision, limit int64) (int64, []*server.Event, error) {
 	if strings.HasSuffix(prefix, "/") {
 		prefix += "%"
@@ -433,6 +437,8 @@ func (s *SQLLog) poll(result chan interface{}, pollStart int64) {
 			continue
 		}
 
+		logrus.Debugf("POLL AFTER %d, limit=%d, events=%d", last, pollBatchSize, len(events))
+
 		if len(events) == 0 {
 			continue
 		}
@@ -496,7 +502,7 @@ func (s *SQLLog) poll(result chan interface{}, pollStart int64) {
 				logrus.Tracef("NOT TRIGGER FILL %s, revision=%d, delete=%v", event.KV.Key, event.KV.ModRevision, event.Delete)
 			} else {
 				sequential = append(sequential, event)
-				logrus.Tracef("TRIGGERED %s, revision=%d, delete=%v", event.KV.Key, event.KV.ModRevision, event.Delete)
+				logrus.Debugf("TRIGGERED %s, revision=%d, delete=%v", event.KV.Key, event.KV.ModRevision, event.Delete)
 			}
 		}
 
