@@ -467,8 +467,10 @@ func (d *Generic) GetSize(ctx context.Context) (int64, error) {
 	var size int64
 	row := d.queryRow(ctx, d.GetSizeSQL)
 	if err := row.Scan(&size); err != nil {
+		logrus.Errorf("GetSize: err=%v", err)
 		return 0, err
 	}
+	logrus.Infof("GetSize: %d", size)
 	return size, nil
 }
 
