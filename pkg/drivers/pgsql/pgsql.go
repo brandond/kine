@@ -74,46 +74,11 @@ func New(ctx context.Context, wg *sync.WaitGroup, cfg *drivers.Config) (bool, se
 	if err != nil {
 		return false, nil, err
 	}
-	columns := "kv.id AS theid, kv.name, kv.created, kv.deleted, kv.create_revision, kv.prev_revision, kv.lease"
-	withVal := columns + ", kv.value"
-	listFmt := `
-		SELECT
-			(SELECT MAX(rkv.id) AS id FROM kine AS rkv),
-			(SELECT MAX(crkv.prev_revision) AS prev_revision FROM kine AS crkv WHERE crkv.name = 'compact_rev_key'),
-			maxkv.*
-		FROM (
-			SELECT DISTINCT ON (name)
-				%s
-			FROM
-				kine AS kv
-			WHERE
-				kv.name LIKE ? ESCAPE '^'
-				%%s
-			ORDER BY kv.name, theid DESC
-		) AS maxkv
-		WHERE
-			maxkv.deleted = 0 OR ?
-		ORDER BY maxkv.name, maxkv.theid DESC
-	`
-	listSQL := fmt.Sprintf(listFmt, columns)
-	listValSQL := fmt.Sprintf(listFmt, withVal)
 
-	countSQL := `
-		SELECT
-			(SELECT MAX(rkv.id) AS id FROM kine AS rkv),
-			COUNT(c.theid)
-		FROM (
-			SELECT DISTINCT ON (name)
-				kv.id AS theid, kv.deleted
-			FROM kine AS kv
-			WHERE
-				kv.name LIKE ? ESCAPE '^'
-				%s
-			ORDER BY kv.name, theid DESC
-			) AS c
-		WHERE c.deleted = 0 OR ?
-		`
-	dialect.GetSizeSQL = `SELECT pg_total_relation_size('kine')`
+	listSQL := fmt.Sprintf(generic.ListFmt, generic.Columns, generic.CurrentRevSQL, generic.CompactRevSQL, generic.FiltersRevSQL)
+	listValSQL := fmt.Sprintf(generic.ListFmt, generic.WithVal, generic.CurrentRevSQL, generic.CompactRevSQL, generic.FiltersRevSQL)
+
+	dialect.GetSizeSQL = `SELECT pg_total_relation_size('kine') /* GetSizeSQL */`
 	dialect.CompactSQL = `
 		DELETE FROM kine AS kv
 		USING	(
@@ -130,15 +95,28 @@ func New(ctx context.Context, wg *sync.WaitGroup, cfg *drivers.Config) (bool, se
 				kd.deleted != 0 AND
 				kd.id <= $2
 		) AS ks
-		WHERE kv.id = ks.id`
-	dialect.GetCurrentSQL = q(fmt.Sprintf(listSQL, "AND kv.name >= ?"))
-	dialect.GetCurrentValSQL = q(fmt.Sprintf(listValSQL, "AND kv.name >= ?"))
-	dialect.ListRevisionStartSQL = q(fmt.Sprintf(listSQL, "AND kv.id <= ?"))
-	dialect.ListRevisionStartValSQL = q(fmt.Sprintf(listValSQL, "AND kv.id <= ?"))
-	dialect.GetRevisionAfterSQL = q(fmt.Sprintf(listSQL, "AND kv.name >= ? AND kv.id <= ?"))
-	dialect.GetRevisionAfterValSQL = q(fmt.Sprintf(listValSQL, "AND kv.name >= ? AND kv.id <= ?"))
-	dialect.CountCurrentSQL = q(fmt.Sprintf(countSQL, "AND kv.name >= ?"))
-	dialect.CountRevisionSQL = q(fmt.Sprintf(countSQL, "AND kv.name >= ? AND kv.id <= ?"))
+		WHERE kv.id = ks.id /* CompactSQL */`
+	dialect.GetCurrentSQL = q(fmt.Sprintf(listSQL, "AND name >= ?")) + " /* GetCurrentSQL */"
+	dialect.GetCurrentValSQL = q(fmt.Sprintf(listValSQL, "AND name >= ?")) + " /* GetCurrentValSQL */"
+	dialect.ListRevisionStartSQL = q(fmt.Sprintf(listSQL, "AND id <= ?")) + " /* ListRevisionStartSQL */"
+	dialect.ListRevisionStartValSQL = q(fmt.Sprintf(listValSQL, "AND id <= ?")) + " /* ListRevisionStartValSQL */"
+	dialect.GetRevisionAfterSQL = q(fmt.Sprintf(listSQL, "AND name >= ? AND id <= ?")) + " /* GetRevisionAfterSQL */"
+	dialect.GetRevisionAfterValSQL = q(fmt.Sprintf(listValSQL, "AND name >= ? AND id <= ?")) + " /* GetRevisionAfterValSQL */"
+
+	dialect.CountCurrentSQL = q(fmt.Sprintf(`
+		SELECT (%s), COUNT(id)
+		FROM kine
+		WHERE id IN (%s)
+		AND (deleted = 0 OR ?)`,
+		generic.CurrentRevSQL, fmt.Sprintf(generic.FiltersRevSQL, "AND name >= ?"))) + " /* CountCurrentSQL */"
+
+	dialect.CountRevisionSQL = q(fmt.Sprintf(`
+		SELECT (%s), (%s), COUNT(id)
+		FROM kine
+		WHERE id IN (%s)
+		AND (deleted = 0 OR ?)`,
+		generic.CurrentRevSQL, generic.CompactRevSQL, fmt.Sprintf(generic.FiltersRevSQL, "AND name >= ? AND id <= ?"))) + " /* CountRevisionSQL */"
+
 	dialect.FillRetryDuration = time.Millisecond + 5
 	dialect.InsertRetry = func(err error) bool {
 		if err, ok := err.(*pgconn.PgError); ok && err.Code == pgerrcode.UniqueViolation && err.ConstraintName == "kine_pkey" {
