@@ -44,21 +44,20 @@ var (
 	SlowSQLWarningThreshold = 5 * time.Second
 )
 
-func ObserveSQL(start time.Time, errCode string, sql util.Stripped, args any) {
+func ObserveSQL(start time.Time, errCode string, sql util.Stripped, args util.Summarize) {
 	SQLTotal.WithLabelValues(errCode).Inc()
 	duration := time.Since(start)
 	SQLTime.WithLabelValues(errCode).Observe(duration.Seconds())
 	if SlowSQLThreshold > 0 && duration >= SlowSQLThreshold {
-		instrumentedLogger := logrus.WithField("duration", duration)
-
-		if logrus.GetLevel() == logrus.TraceLevel {
-			instrumentedLogger.WithField("args", args)
-		}
-
+		instrumentedLogger := logrus.WithFields(logrus.Fields{
+			"args":     args.String(),
+			"duration": duration,
+			"started":  start.Format(time.RFC3339Nano),
+		})
 		if duration < SlowSQLWarningThreshold {
-			instrumentedLogger.Infof("Slow SQL (started: %v) (total time: %v): %s", start, duration, sql)
+			instrumentedLogger.Infof("Slow SQL: %s", sql)
 		} else {
-			instrumentedLogger.Warnf("Slow SQL (started: %v) (total time: %v): %s", start, duration, sql)
+			instrumentedLogger.Warnf("Slow SQL: %s", sql)
 		}
 	}
 }

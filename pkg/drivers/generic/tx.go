@@ -100,7 +100,7 @@ func (t *Tx) query(ctx context.Context, sql string, args ...any) (result *sql.Ro
 	logrus.Tracef("TX QUERY %v : %s", util.Summarize(args), util.Stripped(sql))
 	startTime := time.Now()
 	defer func() {
-		metrics.ObserveSQL(startTime, t.d.ErrCode(err), util.Stripped(sql), args)
+		metrics.ObserveSQL(startTime, t.d.ErrCode(err), util.Stripped(sql), util.Summarize(args))
 	}()
 	return t.x.QueryContext(ctx, sql, args...)
 }
@@ -109,7 +109,7 @@ func (t *Tx) queryRow(ctx context.Context, sql string, args ...any) (result *sql
 	logrus.Tracef("TX QUERY ROW %v : %s", util.Summarize(args), util.Stripped(sql))
 	startTime := time.Now()
 	defer func() {
-		metrics.ObserveSQL(startTime, t.d.ErrCode(result.Err()), util.Stripped(sql), args)
+		metrics.ObserveSQL(startTime, t.d.ErrCode(result.Err()), util.Stripped(sql), util.Summarize(args))
 	}()
 	return t.x.QueryRowContext(ctx, sql, args...)
 }
@@ -118,7 +118,7 @@ func (t *Tx) execute(ctx context.Context, sql string, args ...any) (result sql.R
 	logrus.Tracef("TX EXEC %v : %s", util.Summarize(args), util.Stripped(sql))
 	startTime := time.Now()
 	defer func() {
-		metrics.ObserveSQL(startTime, t.d.ErrCode(err), util.Stripped(sql), args)
+		metrics.ObserveSQL(startTime, t.d.ErrCode(err), util.Stripped(sql), util.Summarize(args))
 	}()
 	return t.x.ExecContext(ctx, sql, args...)
 }

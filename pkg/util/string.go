@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 var whitespace = regexp.MustCompile("[\n\t ]+")
@@ -11,13 +12,16 @@ var whitespace = regexp.MustCompile("[\n\t ]+")
 type Stripped string
 
 func (s Stripped) String() string {
-	return whitespace.ReplaceAllString(string(s), " ")
+	return strings.TrimSpace(whitespace.ReplaceAllString(string(s), " "))
 }
 
 // Summarize wraps a slice of any, and when stringed only prints the type/length of complex arguments
 type Summarize []any
 
 func (s Summarize) String() string {
+	if len(s) == 0 {
+		return ""
+	}
 	ret := make([]any, len(s))
 	for i := range s {
 		switch v := s[i].(type) {

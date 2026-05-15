@@ -263,7 +263,7 @@ func (d *Generic) query(ctx context.Context, sql string, args ...any) (result *s
 	logrus.Tracef("QUERY %v : %s", util.Summarize(args), util.Stripped(sql))
 	startTime := time.Now()
 	defer func() {
-		metrics.ObserveSQL(startTime, d.ErrCode(err), util.Stripped(sql), args)
+		metrics.ObserveSQL(startTime, d.ErrCode(err), util.Stripped(sql), util.Summarize(args))
 	}()
 	return d.DB.QueryContext(ctx, sql, args...)
 }
@@ -272,7 +272,7 @@ func (d *Generic) queryRow(ctx context.Context, sql string, args ...any) (result
 	logrus.Tracef("QUERY ROW %v : %s", util.Summarize(args), util.Stripped(sql))
 	startTime := time.Now()
 	defer func() {
-		metrics.ObserveSQL(startTime, d.ErrCode(result.Err()), util.Stripped(sql), args)
+		metrics.ObserveSQL(startTime, d.ErrCode(result.Err()), util.Stripped(sql), util.Summarize(args))
 	}()
 	return d.DB.QueryRowContext(ctx, sql, args...)
 }
@@ -288,7 +288,7 @@ func (d *Generic) execute(ctx context.Context, sql string, args ...any) (result 
 		logrus.Tracef("EXEC (try: %d) %v : %s", i, util.Summarize(args), util.Stripped(sql))
 		startTime := time.Now()
 		result, err = d.DB.ExecContext(ctx, sql, args...)
-		metrics.ObserveSQL(startTime, d.ErrCode(err), util.Stripped(sql), args)
+		metrics.ObserveSQL(startTime, d.ErrCode(err), util.Stripped(sql), util.Summarize(args))
 		if err != nil && d.Retry != nil && d.Retry(err) {
 			wait(i)
 			continue
