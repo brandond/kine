@@ -3,7 +3,7 @@ package metrics
 import (
 	"time"
 
-	"github.com/k3s-io/kine/pkg/util"
+	"github.com/k3s-io/kine/pkg/query"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
@@ -17,14 +17,16 @@ var (
 	SQLTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "kine_sql_total",
 		Help: "Total number of SQL operations",
-	}, []string{"error_code"})
+	}, []string{"name", "error_code"})
 
 	SQLTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "kine_sql_time_seconds",
 		Help: "Length of time per SQL operation",
-		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
-			1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30},
-	}, []string{"error_code"})
+		// SQL request latency in seconds for each named query and error code.
+		// Keep consistent with apiserver metric 'requestLatencies' in
+		// staging/src/k8s.io/apiserver/pkg/endpoints/metrics/metrics.go
+		Buckets: []float64{0.005, 0.025, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.25, 1.5, 2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 45, 60},
+	}, []string{"name", "error_code"})
 
 	CompactTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "kine_compact_total",
@@ -44,21 +46,22 @@ var (
 	SlowSQLWarningThreshold = 5 * time.Second
 )
 
-func ObserveSQL(start time.Time, errCode string, sql util.Stripped, args any) {
-	SQLTotal.WithLabelValues(errCode).Inc()
-	duration := time.Since(start)
-	SQLTime.WithLabelValues(errCode).Observe(duration.Seconds())
-	if SlowSQLThreshold > 0 && duration >= SlowSQLThreshold {
-		instrumentedLogger := logrus.WithField("duration", duration)
-
-		if logrus.GetLevel() == logrus.TraceLevel {
-			instrumentedLogger.WithField("args", args)
-		}
-
-		if duration < SlowSQLWarningThreshold {
-			instrumentedLogger.Infof("Slow SQL (started: %v) (total time: %v): %s", start, duration, sql)
-		} else {
-			instrumentedLogger.Warnf("Slow SQL (started: %v) (total time: %v): %s", start, duration, sql)
+func ObserveSQL(start time.Time, errCode string, sql *query.Filled) {
+	if sql.Name != "" {
+		SQLTotal.WithLabelValues(sql.Name, errCode).Inc()
+		duration := time.Since(start)
+		SQLTime.WithLabelValues(sql.Name, errCode).Observe(duration.Seconds())
+		if SlowSQLThreshold > 0 && duration >= SlowSQLThreshold {
+			instrumentedLogger := logrus.WithFields(logrus.Fields{
+				"name":     sql.Name,
+				"duration": duration.String(),
+				"started":  start.Format(time.RFC3339Nano),
+			})
+			if duration < SlowSQLWarningThreshold {
+				instrumentedLogger.Infof("Slow SQL: %s", sql.QueryString())
+			} else {
+				instrumentedLogger.Warnf("Slow SQL: %s", sql.QueryString())
+			}
 		}
 	}
 }
