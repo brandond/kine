@@ -87,10 +87,12 @@ func (l *LogStructured) Create(ctx context.Context, key string, value []byte, le
 		logrus.Tracef("CREATE %s, size=%d, lease=%d => rev=%d, err=%v", key, len(value), lease, revRet, errRet)
 	}()
 
-	rev, prevEvent, err := l.get(ctx, key, "", 1, 0, true, false)
-	if err != nil {
+	if rev, prevEvent, err := l.get(ctx, key, "", 1, 0, true, false); err != nil {
 		return 0, err
+	} else if prevEvent != nil && !prevEvent.Delete {
+		return rev, server.ErrKeyExists
 	}
+
 	createEvent := &server.Event{
 		Create: true,
 		KV: &server.KeyValue{
@@ -98,15 +100,6 @@ func (l *LogStructured) Create(ctx context.Context, key string, value []byte, le
 			Value: value,
 			Lease: lease,
 		},
-		PrevKV: &server.KeyValue{
-			ModRevision: rev,
-		},
-	}
-	if prevEvent != nil {
-		if !prevEvent.Delete {
-			return 0, server.ErrKeyExists
-		}
-		createEvent.PrevKV = prevEvent.KV
 	}
 
 	revRet, errRet = l.log.Append(ctx, createEvent)
