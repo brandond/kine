@@ -87,7 +87,7 @@ func (l *LogStructured) Create(ctx context.Context, key string, value []byte, le
 		logrus.Tracef("CREATE %s, size=%d, lease=%d => rev=%d, err=%v", key, len(value), lease, revRet, errRet)
 	}()
 
-	rev, prevEvent, err := l.get(ctx, key, "", 1, 0, true, true)
+	_, prevEvent, err := l.get(ctx, key, "", 1, 0, true, true)
 	if err != nil {
 		return 0, err
 	}
@@ -98,15 +98,13 @@ func (l *LogStructured) Create(ctx context.Context, key string, value []byte, le
 			Value: value,
 			Lease: lease,
 		},
-		PrevKV: &server.KeyValue{
-			ModRevision: rev,
-		},
+		PrevKV: &server.KeyValue{},
 	}
 	if prevEvent != nil {
 		if !prevEvent.Delete {
 			return 0, server.ErrKeyExists
 		}
-		createEvent.PrevKV = prevEvent.KV
+		createEvent.PrevKV.ModRevision = prevEvent.KV.ModRevision
 	}
 
 	revRet, errRet = l.log.Append(ctx, createEvent)
@@ -137,8 +135,8 @@ func (l *LogStructured) Delete(ctx context.Context, key string, revision int64) 
 	}
 	deleteEvent := &server.Event{
 		Delete: true,
-		KV:     &server.KeyValue{Key: event.KV.Key},
-		PrevKV: event.KV,
+		KV:     &server.KeyValue{Key: key},
+		PrevKV: &server.KeyValue{ModRevision: event.KV.ModRevision},
 	}
 
 	rev, err = l.log.Append(ctx, deleteEvent)
@@ -227,7 +225,7 @@ func (l *LogStructured) Update(ctx context.Context, key string, value []byte, re
 		logrus.Tracef("UPDATE %s, value=%d, rev=%d, lease=%v => rev=%d, kvrev=%d, updated=%v, err=%v", key, len(value), revision, lease, revRet, kvRev, updateRet, errRet)
 	}()
 
-	rev, event, err := l.get(ctx, key, "", 1, 0, false, false)
+	rev, event, err := l.get(ctx, key, "", 1, 0, false, true)
 	if err != nil {
 		return 0, nil, false, err
 	}
@@ -247,7 +245,7 @@ func (l *LogStructured) Update(ctx context.Context, key string, value []byte, re
 			Value:          value,
 			Lease:          lease,
 		},
-		PrevKV: event.KV,
+		PrevKV: &server.KeyValue{ModRevision: event.KV.ModRevision},
 	}
 
 	rev, err = l.log.Append(ctx, updateEvent)
