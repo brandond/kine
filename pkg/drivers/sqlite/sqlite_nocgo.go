@@ -3,6 +3,7 @@
 package sqlite
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -10,8 +11,8 @@ import (
 
 	"github.com/k3s-io/kine/pkg/query"
 	"github.com/k3s-io/kine/pkg/server"
-	sqlite3 "modernc.org/sqlite"
-	sqlite3lib "modernc.org/sqlite/lib"
+	sqlite3lib "github.com/ncruces/go-sqlite3"
+	sqlite3 "github.com/ncruces/go-sqlite3/driver"
 )
 
 func newConnector(driverName, dsn string) (*sqliteConnector, error) {
@@ -21,13 +22,10 @@ func newConnector(driverName, dsn string) (*sqliteConnector, error) {
 		return nil, err
 	}
 
-	driver := &sqlite3.Driver{}
+	driver := &sqlite3.SQLite{}
 	if driverName == "litestream" {
-		driver.RegisterConnectionHook(func(conn sqlite3.ExecQuerierContext, dsn string) error {
-			var err error
-			if ctrl, ok := conn.(sqlite3.FileControl); ok {
-				_, err = ctrl.FileControlPersistWAL("main", 1)
-			}
+		sqlite3lib.AutoExtension(func(c *sqlite3lib.Conn) error {
+			_, err := c.FileControl("main", sqlite3lib.FCNTL_PERSIST_WAL, 1)
 			return err
 		})
 	}
@@ -60,8 +58,6 @@ func translateDSN(dsn string) (string, error) {
 			addAll("_pragma", "journal_mode(%s)", vals)
 		case "_synchronous", "_sync":
 			addAll("_pragma", "synchronous(%s)", vals)
-		case "cache":
-			// shared cache mode is not supported
 		default:
 			addAll(key, "%s", vals)
 		}
@@ -74,16 +70,16 @@ func translateDSN(dsn string) (string, error) {
 }
 
 func version() string {
-	return fmt.Sprintf("modernc.org/sqlite version %s", sqlite3lib.SQLITE_VERSION)
+	return "github.com/ncruces/go-sqlite3"
 }
 
 func postCompact() *query.Named {
-	// wal_checkpoint(FULL) hangs in the busy handler, an issue unique to this sqlite variant
-	return query.New(`PRAGMA wal_checkpoint(PASSIVE)`, "?", false, "PostCompactSQL")
+	return query.New(`PRAGMA wal_checkpoint(FULL)`, "?", false, "PostCompactSQL")
 }
 
 func translateErr(err error) error {
-	if err, ok := err.(*sqlite3.Error); ok && err.Code() == sqlite3lib.SQLITE_CONSTRAINT_UNIQUE {
+	var sqlErr *sqlite3lib.Error
+	if errors.As(err, &sqlErr) && sqlErr.ExtendedCode() == sqlite3lib.CONSTRAINT_UNIQUE {
 		return server.ErrKeyExists
 	}
 	return err
@@ -93,8 +89,9 @@ func errCode(err error) string {
 	if err == nil {
 		return ""
 	}
-	if err, ok := err.(*sqlite3.Error); ok {
-		return sqlite3.ErrorCodeString[err.Code()]
+	var sqlErr *sqlite3lib.Error
+	if errors.As(err, &sqlErr) {
+		return sqlErr.ExtendedCode().Error()
 	}
 	return err.Error()
 }
